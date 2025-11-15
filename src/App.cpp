@@ -1,31 +1,5 @@
-/* XMRig
- * Copyright 2010      Jeff Garzik <jgarzik@pobox.com>
- * Copyright 2012-2014 pooler      <pooler@litecoinpool.org>
- * Copyright 2014      Lucas Jones <https://github.com/lucasjones>
- * Copyright 2014-2016 Wolf9466    <https://github.com/OhGodAPet>
- * Copyright 2016      Jay D Dee   <jayddee246@gmail.com>
- * Copyright 2017-2018 XMR-Stak    <https://github.com/fireice-uk>, <https://github.com/psychocrypt>
- * Copyright 2018      Lee Clagett <https://github.com/vtnerd>
- * Copyright 2018-2024 SChernykh   <https://github.com/SChernykh>
- * Copyright 2016-2024 XMRig       <https://github.com/xmrig>, <support@xmrig.com>
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include <cstdlib>
 #include <uv.h>
-
 
 #include "App.h"
 #include "backend/cpu/Cpu.h"
@@ -39,32 +13,33 @@
 #include "Summary.h"
 #include "version.h"
 
+namespace xmrig {
 
-xmrig::App::App(Process *process)
+App::App(Process *process) noexcept :
+    m_controller(std::make_shared<Controller>(process))
 {
-    m_controller = std::make_shared<Controller>(process);
 }
 
-
-xmrig::App::~App()
+App::~App() noexcept
 {
     Cpu::release();
 }
 
-
-int xmrig::App::exec()
+int App::exec()
 {
     if (!m_controller->isReady()) {
         LOG_EMERG("no valid configuration found, try https://xmrig.com/wizard");
-
         return 2;
     }
 
     int rc = 0;
+
+    // If background() returns true, rc contains exit code
     if (background(rc)) {
         return rc;
     }
 
+    // Signals RAII object
     m_signals = std::make_shared<Signals>(this);
 
     rc = m_controller->init();
@@ -80,7 +55,6 @@ int xmrig::App::exec()
 
     if (m_controller->config()->isDryRun()) {
         LOG_NOTICE("%s " WHITE_BOLD("OK"), Tags::config());
-
         return 0;
     }
 
@@ -92,35 +66,31 @@ int xmrig::App::exec()
     return rc;
 }
 
-
-void xmrig::App::onConsoleCommand(char command)
+void App::onConsoleCommand(char command)
 {
-    if (command == 3) {
+    if (command == 3) {  // Ctrl + C
         LOG_WARN("%s " YELLOW("Ctrl+C received, exiting"), Tags::signal());
         close();
+        return;
     }
-    else {
-        m_controller->execCommand(command);
-    }
+
+    m_controller->execCommand(command);
 }
 
-
-void xmrig::App::onSignal(int signum)
+void App::onSignal(int signum)
 {
-    switch (signum)
-    {
+    switch (signum) {
     case SIGHUP:
     case SIGTERM:
     case SIGINT:
-        return close();
-
+        close();
+        break;
     default:
         break;
     }
 }
 
-
-void xmrig::App::close()
+void App::close() noexcept
 {
     m_signals.reset();
     m_console.reset();
@@ -129,3 +99,5 @@ void xmrig::App::close()
 
     Log::destroy();
 }
+
+} // namespace xmrig
